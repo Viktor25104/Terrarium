@@ -1,0 +1,18 @@
+.app-layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+.app-main {
+    flex: 1;
+    margin-left: 240px;
+    min-height: 100vh;
+    overflow-y: auto;
+}
+
+/* Мобильная адаптация */
+@media (max-width: 768px) {
+    .app-main {
+        margin-left: 60px;
+    }
+}

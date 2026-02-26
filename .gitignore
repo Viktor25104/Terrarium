@@ -1,0 +1,23 @@
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+
+# Go
+terrarium-core/terrarium-server
+
+# Node / Angular
+terrarium-frontend/node_modules/
+terrarium-frontend/dist/
+terrarium-frontend/.angular/
+
+# Data
+data/
+
+# Gemini
+.gemini/

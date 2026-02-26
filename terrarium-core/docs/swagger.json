@@ -1,0 +1,926 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Экстенсивная (excessive) документация API системы управления микроклиматом террариума на базе Raspberry Pi 5.",
+        "title": "API Платформы Климат-Контроля Террариума (Terrarium Climate)",
+        "contact": {},
+        "version": "1.0.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/",
+    "paths": {
+        "/api/v1/config": {
+            "get": {
+                "description": "Возвращает текущие настройки террариума: полярные целевые значения температуры, влажности, гистерезиса и пороги аварийных отключений. Настройки подтягиваются из Postgres.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System",
+                    "Configuration"
+                ],
+                "summary": "Получить текущую конфигурацию (Настройки Автоматизации)",
+                "responses": {
+                    "200": {
+                        "description": "Успешное получение настроек",
+                        "schema": {
+                            "$ref": "#/definitions/models.ConfigPayload"
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка (например, сбой соединения с БД)",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Принимает новые пороговые значения (Payload) и валидирует их. В случае успеха, новые пороги сохраняются в БД.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System",
+                    "Configuration"
+                ],
+                "summary": "Обновить границы климатического контроля",
+                "parameters": [
+                    {
+                        "description": "Объект новых настроек климата",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ConfigPayload"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Конфигурация успешно обновлена",
+                        "schema": {
+                            "$ref": "#/definitions/models.ConfigPayload"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидный Payload",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка записи в базу данных postgres",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/metrics/energy": {
+            "get": {
+                "description": "Возвращает агрегированные отчёты расхода электроэнергии по каждому реле (кВт⋅ч). Данные берутся из таблицы energy_reports. Если отчёты ещё не генерировались — массив будет пуст.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Metrics"
+                ],
+                "summary": "Получить отчёты энергопотребления",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Начало периода (формат YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Конец периода (формат YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Отчёты энергопотребления",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.EnergyReport"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка чтения из БД",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/metrics/sensors": {
+            "get": {
+                "description": "Возвращает исторические данные температуры и влажности из sensor_logs. Поддерживает фильтрацию по дате и ограничение выборки. Если система подключена — данные реальные из БД; если нет — массив будет пуст.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Metrics"
+                ],
+                "summary": "Получить историю показаний датчиков",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Начало периода (RFC3339, например 2026-02-26T00:00:00Z)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Конец периода (RFC3339, например 2026-02-26T23:59:59Z)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Максимальное количество записей (по умолчанию 100, макс 1000)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Историческая справка",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.SensorDataHistory"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Неверный формат параметров",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка чтения из БД",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/relay-logs": {
+            "get": {
+                "description": "Возвращает аудит-лог всех событий включения/выключения реле с причиной и временной меткой. Поддерживает пагинацию.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Logs"
+                ],
+                "summary": "Получить журнал переключений реле",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Количество записей (по умолчанию 50, макс 500)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Смещение для пагинации (по умолчанию 0)",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Журнал переключений",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.RelayLogEntry"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка чтения из БД",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/relays": {
+            "get": {
+                "description": "Выполняет прямой опрос состояния реле из памяти/оборудования.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Hardware Control (Manual Mode)"
+                ],
+                "summary": "Получить фактическое состояние пинов GPIO (всех 4 реле)",
+                "responses": {
+                    "200": {
+                        "description": "Состояние реле",
+                        "schema": {
+                            "$ref": "#/definitions/models.RelayState"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/relays/{id}/toggle": {
+            "post": {
+                "description": "Сигнализирует Raspberry Pi переключить уровень GPIO на конкретном пине. Работает только в MANUAL.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Hardware Control (Manual Mode)"
+                ],
+                "summary": "Переключить конкретное реле [Требует MANUAL режим]",
+                "parameters": [
+                    {
+                        "enum": [
+                            "heat_mat",
+                            "fogger",
+                            "light",
+                            "spare"
+                        ],
+                        "type": "string",
+                        "description": "ID реле для переключения",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Телеметрия с запросом на активацию/деактивацию",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.RelayToggleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Реле успешно переключено",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Неизвестный ID реле",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    },
+                    "403": {
+                        "description": "Система находится в режиме AUTO (ручное управление запрещено)",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/schedules": {
+            "get": {
+                "description": "Возвращает список всех расписаний автоматического включения/выключения реле по времени.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Schedules"
+                ],
+                "summary": "Получить все расписания реле",
+                "responses": {
+                    "200": {
+                        "description": "Список расписаний",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Schedule"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка чтения из БД",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Создаёт запись расписания для автоматического включения/выключения реле по времени суток.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Schedules"
+                ],
+                "summary": "Создать новое расписание реле",
+                "parameters": [
+                    {
+                        "description": "Данные расписания",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ScheduleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Расписание успешно создано",
+                        "schema": {
+                            "$ref": "#/definitions/models.Schedule"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидный Payload",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка записи в БД",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/schedules/{id}": {
+            "put": {
+                "description": "Изменяет параметры существующего расписания реле по его UUID.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Schedules"
+                ],
+                "summary": "Обновить существующее расписание",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "UUID расписания",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Обновлённые данные",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ScheduleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Расписание обновлено",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидный Payload",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    },
+                    "404": {
+                        "description": "Расписание не найдено",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка обновления",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Удаляет запись расписания по UUID.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Schedules"
+                ],
+                "summary": "Удалить расписание реле",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "UUID расписания",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Расписание удалено",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Расписание не найдено",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sensors/current": {
+            "get": {
+                "description": "Возвращает последние мгновенные показания с DHT22. Данные кэшируются в Engine (обновляются каждые 5 сек). При отсутствии подключения к оборудованию возвращаются mock-значения.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sensors"
+                ],
+                "summary": "Получить текущие показания датчиков (температура + влажность, обе зоны)",
+                "responses": {
+                    "200": {
+                        "description": "Текущие показания",
+                        "schema": {
+                            "$ref": "#/definitions/models.SensorCurrent"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/system/mode": {
+            "post": {
+                "description": "Позволяет пользователю полностью перехватить контроль над реле.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "Изменить глобальный режим системы (AUTO или MANUAL)",
+                "parameters": [
+                    {
+                        "description": "Целевой режим: 'AUTO' или 'MANUAL'",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ModeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Режим успешно изменен",
+                        "schema": {
+                            "$ref": "#/definitions/models.ModeRequest"
+                        }
+                    },
+                    "400": {
+                        "description": "Неверно заданный режим",
+                        "schema": {
+                            "$ref": "#/definitions/models.HTTPError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/system/status": {
+            "get": {
+                "description": "Предоставляет uptime приложения и текущий режим работы автомата (AUTO/MANUAL) из БД.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "Получить статус и общую \"проверку здоровья\" (Health check) системы",
+                "responses": {
+                    "200": {
+                        "description": "Системный статус успешно получен",
+                        "schema": {
+                            "$ref": "#/definitions/models.SystemStatus"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "models.ConfigPayload": {
+            "description": "Payload конфигурации для управления поведением механизма климат-контроля",
+            "type": "object",
+            "required": [
+                "cold_max_threshold",
+                "emergency_max_threshold",
+                "humidity_max",
+                "humidity_min",
+                "hysteresis_hum",
+                "hysteresis_temp",
+                "warm_target_max",
+                "warm_target_min"
+            ],
+            "properties": {
+                "cold_max_threshold": {
+                    "description": "Максимально допустимая температура в холодной зоне (°C). Если превышена, обогрев принудительно отключается.\nExample: 26.5",
+                    "type": "number",
+                    "maximum": 35,
+                    "minimum": 20,
+                    "example": 26.5
+                },
+                "emergency_max_threshold": {
+                    "description": "Температурный порог теплой зоны (°C), при котором система аварийно отключает всё и шлёт Alert в Telegram.\nExample: 35.0",
+                    "type": "number",
+                    "maximum": 45,
+                    "minimum": 30,
+                    "example": 35
+                },
+                "humidity_max": {
+                    "description": "Максимальная влажность (%), при достижении которой фоггер отключается.\nExample: 65.0",
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "example": 65
+                },
+                "humidity_min": {
+                    "description": "Минимальная влажность (%), при которой включается фоггер (генератор тумана).\nExample: 50.0",
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "example": 50
+                },
+                "hysteresis_hum": {
+                    "description": "Гистерезис влажности (%), для предотвращения частого срабатывания фоггера.\nExample: 2.0",
+                    "type": "number",
+                    "maximum": 10,
+                    "minimum": 0.5,
+                    "example": 2
+                },
+                "hysteresis_temp": {
+                    "description": "Температурный гистерезис (°C), чтобы избежать \"дребезга\" реле около целевого значения.\nExample: 0.5",
+                    "type": "number",
+                    "maximum": 5,
+                    "minimum": 0.1,
+                    "example": 0.5
+                },
+                "warm_target_max": {
+                    "description": "Максимальная целевая температура в теплой зоне (°C), при достижении которой обогрев отключается.\nОграничения: от WarmTargetMin до 40.0.\nExample: 33.0",
+                    "type": "number",
+                    "maximum": 40,
+                    "minimum": 20,
+                    "example": 33
+                },
+                "warm_target_min": {
+                    "description": "Минимальная целевая температура в теплой зоне (°C), при которой включается обогрев.\nОграничения: от 20.0 до 40.0.\nExample: 31.5",
+                    "type": "number",
+                    "maximum": 40,
+                    "minimum": 20,
+                    "example": 31.5
+                }
+            }
+        },
+        "models.EnergyReport": {
+            "description": "Общие затраты энергопотребления террариумом (рассчитываются из времени работы и заявленной мощности реле).",
+            "type": "object",
+            "properties": {
+                "fogger_kwh": {
+                    "description": "КВт⋅ч, затраченные генератором тумана\nExample: 0.0300",
+                    "type": "number",
+                    "example": 0.03
+                },
+                "heat_mat_kwh": {
+                    "description": "КВт⋅ч, затраченные нагревателем (Heat Mat)\nExample: 0.1500",
+                    "type": "number",
+                    "example": 0.15
+                },
+                "light_kwh": {
+                    "description": "КВт⋅ч, затраченные освещением\nExample: 0.2400",
+                    "type": "number",
+                    "example": 0.24
+                },
+                "report_date": {
+                    "description": "Дата генерации отчета\nExample: \"2026-02-26\"",
+                    "type": "string",
+                    "example": "2026-02-26"
+                },
+                "spare_kwh": {
+                    "description": "КВт⋅ч, затраченные запасным портом\nExample: 0.0000",
+                    "type": "number",
+                    "example": 0
+                },
+                "total_kwh": {
+                    "description": "Суммарные затраты по всем розеткам (КВт⋅ч)\nExample: 0.4200",
+                    "type": "number",
+                    "example": 0.42
+                }
+            }
+        },
+        "models.HTTPError": {
+            "description": "Стандартный формат возвращаемой ошибки при нештатных или невалидных запросах",
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "HTTP код статуса ошибки\nExample: 400",
+                    "type": "integer",
+                    "example": 400
+                },
+                "message": {
+                    "description": "Текстовое описание ошибки или причина отказа\nExample: \"Invalid request payload\"",
+                    "type": "string",
+                    "example": "Параметры выходят за допустимые пределы"
+                }
+            }
+        },
+        "models.ModeRequest": {
+            "description": "Запрос для переключения между АВТОМАТИЧЕСКОЙ и РУЧНОЙ работой механизмов.",
+            "type": "object",
+            "required": [
+                "mode"
+            ],
+            "properties": {
+                "mode": {
+                    "description": "Целевой режим работы системы. Допускается 'AUTO' (автоматика) или 'MANUAL' (ручное управление).\nExample: MANUAL",
+                    "type": "string",
+                    "enum": [
+                        "AUTO",
+                        "MANUAL"
+                    ],
+                    "example": "MANUAL"
+                }
+            }
+        },
+        "models.RelayLogEntry": {
+            "description": "Запись журнала переключений реле с причиной и временной меткой.",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "description": "Уникальный идентификатор записи (UUID)\nExample: \"f1e2d3c4-b5a6-7890-cdef-1234567890ab\"",
+                    "type": "string",
+                    "example": "f1e2d3c4-b5a6-7890-cdef-1234567890ab"
+                },
+                "reason": {
+                    "description": "Причина переключения (AUTO_TEMP_TRIGGER, MANUAL_OVERRIDE, EMERGENCY_CUTOFF и т.д.)\nExample: \"AUTO_TEMP_TRIGGER\"",
+                    "type": "string",
+                    "example": "AUTO_TEMP_TRIGGER"
+                },
+                "recorded_at": {
+                    "description": "Время события\nExample: \"2026-02-26T14:05:00Z\"",
+                    "type": "string",
+                    "example": "2026-02-26T14:05:00Z"
+                },
+                "relay_id": {
+                    "description": "Идентификатор реле (heat_mat / fogger / light / spare)\nExample: \"heat_mat\"",
+                    "type": "string",
+                    "example": "heat_mat"
+                },
+                "state": {
+                    "description": "Состояние реле после переключения (true = ВКЛ, false = ВЫКЛ)\nExample: true",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "models.RelayState": {
+            "description": "Фактическое (электрическое) состояние исполнительных устройств.",
+            "type": "object",
+            "properties": {
+                "fogger": {
+                    "description": "Состояние реле генератора тумана\nExample: false",
+                    "type": "boolean",
+                    "example": false
+                },
+                "heat_mat": {
+                    "description": "Состояние реле термоковрика (true = ВКЛ, false = ВЫКЛ)\nExample: true",
+                    "type": "boolean",
+                    "example": true
+                },
+                "light": {
+                    "description": "Состояние освещения террариума\nExample: true",
+                    "type": "boolean",
+                    "example": true
+                },
+                "spare": {
+                    "description": "Состояние запасной розетки\nExample: false",
+                    "type": "boolean",
+                    "example": false
+                }
+            }
+        },
+        "models.RelayToggleRequest": {
+            "description": "Запрос на принудительное переключение состояния реле",
+            "type": "object",
+            "properties": {
+                "state": {
+                    "description": "Желаемое состояние реле (true для включения, false для выключения)\nExample: true",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "models.Schedule": {
+            "description": "Расписание автоматического управления реле по времени суток.",
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "Дата создания записи\nExample: \"2026-02-26T12:00:00Z\"",
+                    "type": "string",
+                    "example": "2026-02-26T12:00:00Z"
+                },
+                "end_time": {
+                    "description": "Время выключения (формат HH:MM)\nExample: \"20:00\"",
+                    "type": "string",
+                    "example": "20:00"
+                },
+                "id": {
+                    "description": "Уникальный идентификатор расписания (UUID)\nExample: \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\"",
+                    "type": "string",
+                    "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                },
+                "is_active": {
+                    "description": "Активно ли расписание\nExample: true",
+                    "type": "boolean",
+                    "example": true
+                },
+                "relay_id": {
+                    "description": "ID реле, к которому привязано расписание\nExample: \"light\"",
+                    "type": "string",
+                    "example": "light"
+                },
+                "start_time": {
+                    "description": "Время включения (формат HH:MM)\nExample: \"08:00\"",
+                    "type": "string",
+                    "example": "08:00"
+                }
+            }
+        },
+        "models.ScheduleRequest": {
+            "description": "Payload для создания/обновления расписания реле.",
+            "type": "object",
+            "required": [
+                "end_time",
+                "relay_id",
+                "start_time"
+            ],
+            "properties": {
+                "end_time": {
+                    "description": "Время выключения (формат HH:MM)\nExample: \"20:00\"",
+                    "type": "string",
+                    "example": "20:00"
+                },
+                "is_active": {
+                    "description": "Активно ли расписание (по умолчанию true)\nExample: true",
+                    "type": "boolean",
+                    "example": true
+                },
+                "relay_id": {
+                    "description": "ID реле (heat_mat, fogger, light, spare)\nExample: \"light\"",
+                    "type": "string",
+                    "example": "light"
+                },
+                "start_time": {
+                    "description": "Время включения (формат HH:MM)\nExample: \"08:00\"",
+                    "type": "string",
+                    "example": "08:00"
+                }
+            }
+        },
+        "models.SensorCurrent": {
+            "description": "Текущие (live) показания температуры и влажности с двух зон террариума.",
+            "type": "object",
+            "properties": {
+                "cold_hum": {
+                    "description": "Влажность (%) в холодной зоне\nExample: 65.2",
+                    "type": "number",
+                    "example": 65.2
+                },
+                "cold_temp": {
+                    "description": "Температура (°C) в холодной зоне\nExample: 24.8",
+                    "type": "number",
+                    "example": 24.8
+                },
+                "mode": {
+                    "description": "Текущий режим системы (AUTO / MANUAL)\nExample: AUTO",
+                    "type": "string",
+                    "example": "AUTO"
+                },
+                "timestamp": {
+                    "description": "Время последнего считывания с датчиков\nExample: \"2026-02-26T15:30:00Z\"",
+                    "type": "string",
+                    "example": "2026-02-26T15:30:00Z"
+                },
+                "warm_hum": {
+                    "description": "Влажность (%) в тёплой зоне\nExample: 58.5",
+                    "type": "number",
+                    "example": 58.5
+                },
+                "warm_temp": {
+                    "description": "Температура (°C) в тёплой зоне\nExample: 32.3",
+                    "type": "number",
+                    "example": 32.3
+                }
+            }
+        },
+        "models.SensorDataHistory": {
+            "description": "Историческая справка температуры и влажности из БД для графиков.",
+            "type": "object",
+            "properties": {
+                "cold_hum": {
+                    "description": "Влажность (%) с холодной зоны\nExample: 60.1",
+                    "type": "number",
+                    "example": 60.1
+                },
+                "cold_temp": {
+                    "description": "Температура (°C) с холодной зоны террариума (для безопасности)\nExample: 25.0",
+                    "type": "number",
+                    "example": 25
+                },
+                "timestamp": {
+                    "description": "Точное время и дата, когда показания были записаны системой\nExample: \"2026-02-26T13:30:00Z\"",
+                    "type": "string",
+                    "example": "2026-02-26T13:30:00Z"
+                },
+                "warm_hum": {
+                    "description": "Влажность (%) с теплой зоны\nExample: 55.4",
+                    "type": "number",
+                    "example": 55.4
+                },
+                "warm_temp": {
+                    "description": "Температура (°C) с теплой зоны террариума\nExample: 32.1",
+                    "type": "number",
+                    "example": 32.1
+                }
+            }
+        },
+        "models.SystemStatus": {
+            "description": "Состояние системы, режим и аптайм",
+            "type": "object",
+            "properties": {
+                "db_status": {
+                    "description": "Статус соединения с базой данных PostgreSQL (OK или ERROR).\nExample: OK",
+                    "type": "string",
+                    "example": "OK"
+                },
+                "mode": {
+                    "description": "Текущий активный режим автоматизации (AUTO или MANUAL).\nExample: AUTO",
+                    "type": "string",
+                    "example": "AUTO"
+                },
+                "uptime": {
+                    "description": "Время работы сервиса с момента старта (в секундах).\nExample: 3600",
+                    "type": "integer",
+                    "example": 3600
+                }
+            }
+        }
+    }
+}

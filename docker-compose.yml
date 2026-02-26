@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  terrarium-db:
+    image: postgres:15-alpine
+    container_name: terrarium_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-terrarium}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-supersecurepassword}
+      POSTGRES_DB: ${DB_NAME:-terrarium_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - terrarium_pg_data:/var/lib/postgresql/data
+      - ./docs/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-terrarium} -d ${DB_NAME:-terrarium_db}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  terrarium-core:
+    build:
+      context: ./terrarium-core
+      dockerfile: Dockerfile
+    container_name: terrarium_core
+    restart: always
+    privileged: true # Необходимо для прямого доступа к GPIO через libgpiod
+    devices:
+      - "/dev/gpiochip4:/dev/gpiochip4" # В зависимости от маппинга GPIO Pi 5
+    # network_mode: "host" # Удалено: не работает на Mac Docker Desktop
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=terrarium-db # Возвращаем межконтейнерную связь
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-terrarium}
+      - DB_PASSWORD=${DB_PASSWORD:-supersecurepassword}
+      - DB_NAME=${DB_NAME:-terrarium_db}
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - GPIO_MAPPING=${GPIO_MAPPING}
+      - WATTAGE_MAPPING=${WATTAGE_MAPPING}
+      - PORT=${PORT:-8080}
+    volumes:
+      - ./data/state:/app/state # Быстрый доступ к JSON фолбеку состояния
+    depends_on:
+      terrarium-db:
+        condition: service_healthy
+
+  terrarium-frontend:
+    build:
+      context: ./terrarium-frontend
+      dockerfile: Dockerfile
+    container_name: terrarium_frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - terrarium-core
+
+volumes:
+  terrarium_pg_data:

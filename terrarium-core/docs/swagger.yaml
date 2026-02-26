@@ -1,0 +1,777 @@
+basePath: /
+definitions:
+  models.ConfigPayload:
+    description: Payload конфигурации для управления поведением механизма климат-контроля
+    properties:
+      cold_max_threshold:
+        description: |-
+          Максимально допустимая температура в холодной зоне (°C). Если превышена, обогрев принудительно отключается.
+          Example: 26.5
+        example: 26.5
+        maximum: 35
+        minimum: 20
+        type: number
+      emergency_max_threshold:
+        description: |-
+          Температурный порог теплой зоны (°C), при котором система аварийно отключает всё и шлёт Alert в Telegram.
+          Example: 35.0
+        example: 35
+        maximum: 45
+        minimum: 30
+        type: number
+      humidity_max:
+        description: |-
+          Максимальная влажность (%), при достижении которой фоггер отключается.
+          Example: 65.0
+        example: 65
+        maximum: 100
+        minimum: 0
+        type: number
+      humidity_min:
+        description: |-
+          Минимальная влажность (%), при которой включается фоггер (генератор тумана).
+          Example: 50.0
+        example: 50
+        maximum: 100
+        minimum: 0
+        type: number
+      hysteresis_hum:
+        description: |-
+          Гистерезис влажности (%), для предотвращения частого срабатывания фоггера.
+          Example: 2.0
+        example: 2
+        maximum: 10
+        minimum: 0.5
+        type: number
+      hysteresis_temp:
+        description: |-
+          Температурный гистерезис (°C), чтобы избежать "дребезга" реле около целевого значения.
+          Example: 0.5
+        example: 0.5
+        maximum: 5
+        minimum: 0.1
+        type: number
+      warm_target_max:
+        description: |-
+          Максимальная целевая температура в теплой зоне (°C), при достижении которой обогрев отключается.
+          Ограничения: от WarmTargetMin до 40.0.
+          Example: 33.0
+        example: 33
+        maximum: 40
+        minimum: 20
+        type: number
+      warm_target_min:
+        description: |-
+          Минимальная целевая температура в теплой зоне (°C), при которой включается обогрев.
+          Ограничения: от 20.0 до 40.0.
+          Example: 31.5
+        example: 31.5
+        maximum: 40
+        minimum: 20
+        type: number
+    required:
+    - cold_max_threshold
+    - emergency_max_threshold
+    - humidity_max
+    - humidity_min
+    - hysteresis_hum
+    - hysteresis_temp
+    - warm_target_max
+    - warm_target_min
+    type: object
+  models.EnergyReport:
+    description: Общие затраты энергопотребления террариумом (рассчитываются из времени
+      работы и заявленной мощности реле).
+    properties:
+      fogger_kwh:
+        description: |-
+          КВт⋅ч, затраченные генератором тумана
+          Example: 0.0300
+        example: 0.03
+        type: number
+      heat_mat_kwh:
+        description: |-
+          КВт⋅ч, затраченные нагревателем (Heat Mat)
+          Example: 0.1500
+        example: 0.15
+        type: number
+      light_kwh:
+        description: |-
+          КВт⋅ч, затраченные освещением
+          Example: 0.2400
+        example: 0.24
+        type: number
+      report_date:
+        description: |-
+          Дата генерации отчета
+          Example: "2026-02-26"
+        example: "2026-02-26"
+        type: string
+      spare_kwh:
+        description: |-
+          КВт⋅ч, затраченные запасным портом
+          Example: 0.0000
+        example: 0
+        type: number
+      total_kwh:
+        description: |-
+          Суммарные затраты по всем розеткам (КВт⋅ч)
+          Example: 0.4200
+        example: 0.42
+        type: number
+    type: object
+  models.HTTPError:
+    description: Стандартный формат возвращаемой ошибки при нештатных или невалидных
+      запросах
+    properties:
+      code:
+        description: |-
+          HTTP код статуса ошибки
+          Example: 400
+        example: 400
+        type: integer
+      message:
+        description: |-
+          Текстовое описание ошибки или причина отказа
+          Example: "Invalid request payload"
+        example: Параметры выходят за допустимые пределы
+        type: string
+    type: object
+  models.ModeRequest:
+    description: Запрос для переключения между АВТОМАТИЧЕСКОЙ и РУЧНОЙ работой механизмов.
+    properties:
+      mode:
+        description: |-
+          Целевой режим работы системы. Допускается 'AUTO' (автоматика) или 'MANUAL' (ручное управление).
+          Example: MANUAL
+        enum:
+        - AUTO
+        - MANUAL
+        example: MANUAL
+        type: string
+    required:
+    - mode
+    type: object
+  models.RelayLogEntry:
+    description: Запись журнала переключений реле с причиной и временной меткой.
+    properties:
+      id:
+        description: |-
+          Уникальный идентификатор записи (UUID)
+          Example: "f1e2d3c4-b5a6-7890-cdef-1234567890ab"
+        example: f1e2d3c4-b5a6-7890-cdef-1234567890ab
+        type: string
+      reason:
+        description: |-
+          Причина переключения (AUTO_TEMP_TRIGGER, MANUAL_OVERRIDE, EMERGENCY_CUTOFF и т.д.)
+          Example: "AUTO_TEMP_TRIGGER"
+        example: AUTO_TEMP_TRIGGER
+        type: string
+      recorded_at:
+        description: |-
+          Время события
+          Example: "2026-02-26T14:05:00Z"
+        example: "2026-02-26T14:05:00Z"
+        type: string
+      relay_id:
+        description: |-
+          Идентификатор реле (heat_mat / fogger / light / spare)
+          Example: "heat_mat"
+        example: heat_mat
+        type: string
+      state:
+        description: |-
+          Состояние реле после переключения (true = ВКЛ, false = ВЫКЛ)
+          Example: true
+        example: true
+        type: boolean
+    type: object
+  models.RelayState:
+    description: Фактическое (электрическое) состояние исполнительных устройств.
+    properties:
+      fogger:
+        description: |-
+          Состояние реле генератора тумана
+          Example: false
+        example: false
+        type: boolean
+      heat_mat:
+        description: |-
+          Состояние реле термоковрика (true = ВКЛ, false = ВЫКЛ)
+          Example: true
+        example: true
+        type: boolean
+      light:
+        description: |-
+          Состояние освещения террариума
+          Example: true
+        example: true
+        type: boolean
+      spare:
+        description: |-
+          Состояние запасной розетки
+          Example: false
+        example: false
+        type: boolean
+    type: object
+  models.RelayToggleRequest:
+    description: Запрос на принудительное переключение состояния реле
+    properties:
+      state:
+        description: |-
+          Желаемое состояние реле (true для включения, false для выключения)
+          Example: true
+        example: true
+        type: boolean
+    type: object
+  models.Schedule:
+    description: Расписание автоматического управления реле по времени суток.
+    properties:
+      created_at:
+        description: |-
+          Дата создания записи
+          Example: "2026-02-26T12:00:00Z"
+        example: "2026-02-26T12:00:00Z"
+        type: string
+      end_time:
+        description: |-
+          Время выключения (формат HH:MM)
+          Example: "20:00"
+        example: "20:00"
+        type: string
+      id:
+        description: |-
+          Уникальный идентификатор расписания (UUID)
+          Example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        type: string
+      is_active:
+        description: |-
+          Активно ли расписание
+          Example: true
+        example: true
+        type: boolean
+      relay_id:
+        description: |-
+          ID реле, к которому привязано расписание
+          Example: "light"
+        example: light
+        type: string
+      start_time:
+        description: |-
+          Время включения (формат HH:MM)
+          Example: "08:00"
+        example: "08:00"
+        type: string
+    type: object
+  models.ScheduleRequest:
+    description: Payload для создания/обновления расписания реле.
+    properties:
+      end_time:
+        description: |-
+          Время выключения (формат HH:MM)
+          Example: "20:00"
+        example: "20:00"
+        type: string
+      is_active:
+        description: |-
+          Активно ли расписание (по умолчанию true)
+          Example: true
+        example: true
+        type: boolean
+      relay_id:
+        description: |-
+          ID реле (heat_mat, fogger, light, spare)
+          Example: "light"
+        example: light
+        type: string
+      start_time:
+        description: |-
+          Время включения (формат HH:MM)
+          Example: "08:00"
+        example: "08:00"
+        type: string
+    required:
+    - end_time
+    - relay_id
+    - start_time
+    type: object
+  models.SensorCurrent:
+    description: Текущие (live) показания температуры и влажности с двух зон террариума.
+    properties:
+      cold_hum:
+        description: |-
+          Влажность (%) в холодной зоне
+          Example: 65.2
+        example: 65.2
+        type: number
+      cold_temp:
+        description: |-
+          Температура (°C) в холодной зоне
+          Example: 24.8
+        example: 24.8
+        type: number
+      mode:
+        description: |-
+          Текущий режим системы (AUTO / MANUAL)
+          Example: AUTO
+        example: AUTO
+        type: string
+      timestamp:
+        description: |-
+          Время последнего считывания с датчиков
+          Example: "2026-02-26T15:30:00Z"
+        example: "2026-02-26T15:30:00Z"
+        type: string
+      warm_hum:
+        description: |-
+          Влажность (%) в тёплой зоне
+          Example: 58.5
+        example: 58.5
+        type: number
+      warm_temp:
+        description: |-
+          Температура (°C) в тёплой зоне
+          Example: 32.3
+        example: 32.3
+        type: number
+    type: object
+  models.SensorDataHistory:
+    description: Историческая справка температуры и влажности из БД для графиков.
+    properties:
+      cold_hum:
+        description: |-
+          Влажность (%) с холодной зоны
+          Example: 60.1
+        example: 60.1
+        type: number
+      cold_temp:
+        description: |-
+          Температура (°C) с холодной зоны террариума (для безопасности)
+          Example: 25.0
+        example: 25
+        type: number
+      timestamp:
+        description: |-
+          Точное время и дата, когда показания были записаны системой
+          Example: "2026-02-26T13:30:00Z"
+        example: "2026-02-26T13:30:00Z"
+        type: string
+      warm_hum:
+        description: |-
+          Влажность (%) с теплой зоны
+          Example: 55.4
+        example: 55.4
+        type: number
+      warm_temp:
+        description: |-
+          Температура (°C) с теплой зоны террариума
+          Example: 32.1
+        example: 32.1
+        type: number
+    type: object
+  models.SystemStatus:
+    description: Состояние системы, режим и аптайм
+    properties:
+      db_status:
+        description: |-
+          Статус соединения с базой данных PostgreSQL (OK или ERROR).
+          Example: OK
+        example: OK
+        type: string
+      mode:
+        description: |-
+          Текущий активный режим автоматизации (AUTO или MANUAL).
+          Example: AUTO
+        example: AUTO
+        type: string
+      uptime:
+        description: |-
+          Время работы сервиса с момента старта (в секундах).
+          Example: 3600
+        example: 3600
+        type: integer
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Экстенсивная (excessive) документация API системы управления микроклиматом
+    террариума на базе Raspberry Pi 5.
+  title: API Платформы Климат-Контроля Террариума (Terrarium Climate)
+  version: 1.0.0
+paths:
+  /api/v1/config:
+    get:
+      consumes:
+      - application/json
+      description: 'Возвращает текущие настройки террариума: полярные целевые значения
+        температуры, влажности, гистерезиса и пороги аварийных отключений. Настройки
+        подтягиваются из Postgres.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Успешное получение настроек
+          schema:
+            $ref: '#/definitions/models.ConfigPayload'
+        "500":
+          description: Внутренняя ошибка (например, сбой соединения с БД)
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+      summary: Получить текущую конфигурацию (Настройки Автоматизации)
+      tags:
+      - System
+      - Configuration
+    put:
+      consumes:
+      - application/json
+      description: Принимает новые пороговые значения (Payload) и валидирует их. В
+        случае успеха, новые пороги сохраняются в БД.
+      parameters:
+      - description: Объект новых настроек климата
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.ConfigPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Конфигурация успешно обновлена
+          schema:
+            $ref: '#/definitions/models.ConfigPayload'
+        "400":
+          description: Невалидный Payload
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+        "500":
+          description: Ошибка записи в базу данных postgres
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+      summary: Обновить границы климатического контроля
+      tags:
+      - System
+      - Configuration
+  /api/v1/metrics/energy:
+    get:
+      description: Возвращает агрегированные отчёты расхода электроэнергии по каждому
+        реле (кВт⋅ч). Данные берутся из таблицы energy_reports. Если отчёты ещё не
+        генерировались — массив будет пуст.
+      parameters:
+      - description: Начало периода (формат YYYY-MM-DD)
+        in: query
+        name: from
+        type: string
+      - description: Конец периода (формат YYYY-MM-DD)
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Отчёты энергопотребления
+          schema:
+            items:
+              $ref: '#/definitions/models.EnergyReport'
+            type: array
+        "500":
+          description: Ошибка чтения из БД
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+      summary: Получить отчёты энергопотребления
+      tags:
+      - Metrics
+  /api/v1/metrics/sensors:
+    get:
+      description: Возвращает исторические данные температуры и влажности из sensor_logs.
+        Поддерживает фильтрацию по дате и ограничение выборки. Если система подключена
+        — данные реальные из БД; если нет — массив будет пуст.
+      parameters:
+      - description: Начало периода (RFC3339, например 2026-02-26T00:00:00Z)
+        in: query
+        name: from
+        type: string
+      - description: Конец периода (RFC3339, например 2026-02-26T23:59:59Z)
+        in: query
+        name: to
+        type: string
+      - description: Максимальное количество записей (по умолчанию 100, макс 1000)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Историческая справка
+          schema:
+            items:
+              $ref: '#/definitions/models.SensorDataHistory'
+            type: array
+        "400":
+          description: Неверный формат параметров
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+        "500":
+          description: Ошибка чтения из БД
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+      summary: Получить историю показаний датчиков
+      tags:
+      - Metrics
+  /api/v1/relay-logs:
+    get:
+      description: Возвращает аудит-лог всех событий включения/выключения реле с причиной
+        и временной меткой. Поддерживает пагинацию.
+      parameters:
+      - description: Количество записей (по умолчанию 50, макс 500)
+        in: query
+        name: limit
+        type: integer
+      - description: Смещение для пагинации (по умолчанию 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Журнал переключений
+          schema:
+            items:
+              $ref: '#/definitions/models.RelayLogEntry'
+            type: array
+        "500":
+          description: Ошибка чтения из БД
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+      summary: Получить журнал переключений реле
+      tags:
+      - Logs
+  /api/v1/relays:
+    get:
+      consumes:
+      - application/json
+      description: Выполняет прямой опрос состояния реле из памяти/оборудования.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Состояние реле
+          schema:
+            $ref: '#/definitions/models.RelayState'
+      summary: Получить фактическое состояние пинов GPIO (всех 4 реле)
+      tags:
+      - Hardware Control (Manual Mode)
+  /api/v1/relays/{id}/toggle:
+    post:
+      consumes:
+      - application/json
+      description: Сигнализирует Raspberry Pi переключить уровень GPIO на конкретном
+        пине. Работает только в MANUAL.
+      parameters:
+      - description: ID реле для переключения
+        enum:
+        - heat_mat
+        - fogger
+        - light
+        - spare
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Телеметрия с запросом на активацию/деактивацию
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.RelayToggleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Реле успешно переключено
+          schema:
+            type: string
+        "400":
+          description: Неизвестный ID реле
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+        "403":
+          description: Система находится в режиме AUTO (ручное управление запрещено)
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+      summary: Переключить конкретное реле [Требует MANUAL режим]
+      tags:
+      - Hardware Control (Manual Mode)
+  /api/v1/schedules:
+    get:
+      description: Возвращает список всех расписаний автоматического включения/выключения
+        реле по времени.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Список расписаний
+          schema:
+            items:
+              $ref: '#/definitions/models.Schedule'
+            type: array
+        "500":
+          description: Ошибка чтения из БД
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+      summary: Получить все расписания реле
+      tags:
+      - Schedules
+    post:
+      consumes:
+      - application/json
+      description: Создаёт запись расписания для автоматического включения/выключения
+        реле по времени суток.
+      parameters:
+      - description: Данные расписания
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.ScheduleRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Расписание успешно создано
+          schema:
+            $ref: '#/definitions/models.Schedule'
+        "400":
+          description: Невалидный Payload
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+        "500":
+          description: Ошибка записи в БД
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+      summary: Создать новое расписание реле
+      tags:
+      - Schedules
+  /api/v1/schedules/{id}:
+    delete:
+      description: Удаляет запись расписания по UUID.
+      parameters:
+      - description: UUID расписания
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Расписание удалено
+          schema:
+            type: string
+        "404":
+          description: Расписание не найдено
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+      summary: Удалить расписание реле
+      tags:
+      - Schedules
+    put:
+      consumes:
+      - application/json
+      description: Изменяет параметры существующего расписания реле по его UUID.
+      parameters:
+      - description: UUID расписания
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Обновлённые данные
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.ScheduleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Расписание обновлено
+          schema:
+            type: string
+        "400":
+          description: Невалидный Payload
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+        "404":
+          description: Расписание не найдено
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+        "500":
+          description: Ошибка обновления
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+      summary: Обновить существующее расписание
+      tags:
+      - Schedules
+  /api/v1/sensors/current:
+    get:
+      description: Возвращает последние мгновенные показания с DHT22. Данные кэшируются
+        в Engine (обновляются каждые 5 сек). При отсутствии подключения к оборудованию
+        возвращаются mock-значения.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Текущие показания
+          schema:
+            $ref: '#/definitions/models.SensorCurrent'
+      summary: Получить текущие показания датчиков (температура + влажность, обе зоны)
+      tags:
+      - Sensors
+  /api/v1/system/mode:
+    post:
+      consumes:
+      - application/json
+      description: Позволяет пользователю полностью перехватить контроль над реле.
+      parameters:
+      - description: 'Целевой режим: ''AUTO'' или ''MANUAL'''
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.ModeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Режим успешно изменен
+          schema:
+            $ref: '#/definitions/models.ModeRequest'
+        "400":
+          description: Неверно заданный режим
+          schema:
+            $ref: '#/definitions/models.HTTPError'
+      summary: Изменить глобальный режим системы (AUTO или MANUAL)
+      tags:
+      - System
+  /api/v1/system/status:
+    get:
+      consumes:
+      - application/json
+      description: Предоставляет uptime приложения и текущий режим работы автомата
+        (AUTO/MANUAL) из БД.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Системный статус успешно получен
+          schema:
+            $ref: '#/definitions/models.SystemStatus'
+      summary: Получить статус и общую "проверку здоровья" (Health check) системы
+      tags:
+      - System
+swagger: "2.0"
