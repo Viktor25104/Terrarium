@@ -42,13 +42,13 @@ func main() {
 	var warmSensor, coldSensor gpio.SensorReader
 	var relays map[string]gpio.RelayController
 	// В будущем брать пины из .env GPIO_MAPPING, пока хардкод для стабильности
-	warmSensor, err = gpio.NewRealDHT22("WarmZone", 4) // GPIO 4 (D4 / D5?)
+	warmSensor, err = gpio.NewRealDHT22("WarmZone", 5) // GPIO 5 (D5)
 	if err != nil {
 		log.Printf("[ВНИМАНИЕ] Ошибка инициализации DHT22 (Warm): %v\n", err)
 		// Программа не должна падать, если датчик временно отвалился
 	}
 
-	coldSensor, err = gpio.NewRealDHT22("ColdZone", 17) // GPIO 17
+	coldSensor, err = gpio.NewRealDHT22("ColdZone", 6) // GPIO 6 (D6)
 	if err != nil {
 		log.Printf("[ВНИМАНИЕ] Ошибка инициализации DHT22 (Cold): %v\n", err)
 	}
