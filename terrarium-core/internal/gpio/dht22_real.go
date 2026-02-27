@@ -1,10 +1,10 @@
 package gpio
 
 import (
+	"encoding/json"
 	"fmt"
+	"os/exec"
 	"time"
-
-	"github.com/MichaelS11/go-dht"
 )
 
 // RealDHT22 обеспечивает чтение температуры и влажности с реального диода по 1-wire
@@ -15,13 +15,8 @@ type RealDHT22 struct {
 
 // NewRealDHT22 инициализирует аппаратный датчик.
 func NewRealDHT22(name string, pinOffset int) (*RealDHT22, error) {
-	// Под капотом библиотека go-dht требует инициализации host (использует /dev/mem или sysfs)
-	// В современных Pi 5 лучше использовать gpiod, но протокол протокол DHT очень требователен к таймингам,
-	// и специализированная либа справляется лучше всего.
-	err := dht.HostInit()
-	if err != nil {
-		return nil, fmt.Errorf("ошибка HostInit() для датчиков: %w", err)
-	}
+	// Мы используем Python скрипт (adafruit_dht) через exec,
+	// так как он работает намного стабильнее на Raspberry Pi 5.
 
 	return &RealDHT22{
 		name:   name,
@@ -33,26 +28,32 @@ func (d *RealDHT22) Name() string {
 	return d.name
 }
 
-// Read опрашивает датчик. Функция блокирующая, занимает ~1-2 секунды,
-// так как датчик медленно отдает биты данных.
 func (d *RealDHT22) Read() (SensorData, error) {
-	// Используем номер GPIO (по BCM)
-	pinName := fmt.Sprintf("GPIO%d", d.pinIdx)
+	// Вызываем python скрипт из виртуального окружения
+	cmd := exec.Command("/opt/venv/bin/python3", "/app/internal/gpio/dht_reader.py", fmt.Sprintf("%d", d.pinIdx))
 
-	// Опрашиваем DHT22. Возвращает сразу два флоата (humidity, temperature)
-	dhtSensor, err := dht.NewDHT(pinName, dht.Celsius, "")
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return SensorData{}, fmt.Errorf("ошибка создания объекта датчика: %w", err)
+		return SensorData{}, fmt.Errorf("dht_reader.py error: %w, output: %s", err, string(output))
 	}
 
-	humidity, temperature, err := dhtSensor.ReadRetry(3) // 3 попытки, т.к. датчик часто сбоит по вине таймингов Raspberry
-	if err != nil {
-		return SensorData{}, fmt.Errorf("ошибка чтения DHT22 '%s': %w", d.name, err)
+	var result struct {
+		Temperature float64 `json:"temperature"`
+		Humidity    float64 `json:"humidity"`
+		Error       string  `json:"error"`
+	}
+
+	if err := json.Unmarshal(output, &result); err != nil {
+		return SensorData{}, fmt.Errorf("json unmarshal failed: %w, raw: %s", err, string(output))
+	}
+
+	if result.Error != "" {
+		return SensorData{}, fmt.Errorf("dht error: %s", result.Error)
 	}
 
 	return SensorData{
-		Temperature: temperature,
-		Humidity:    humidity,
+		Temperature: result.Temperature,
+		Humidity:    result.Humidity,
 		Timestamp:   time.Now(),
 	}, nil
 }

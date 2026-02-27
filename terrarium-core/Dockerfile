@@ -23,8 +23,19 @@ RUN go build -ldflags="-w -s" -o terrarium-server ./cmd/server
 FROM debian:bookworm-slim
 
 # Требуется динамическая библиотека libgpiod во время выполнения, плюс сертификаты для API Telegram
-RUN apt-get update && apt-get install -y libgpiod2 ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    libgpiod2 \
+    ca-certificates \
+    tzdata \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
 
+# Создаем виртуальное окружение для Python и ставим нужные пакеты
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir adafruit-circuitpython-dht RPi.GPIO
 # Установка правильного часового пояса для алгоритмов расписания освещения
 ENV TZ=Europe/London
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"os"
-	"strings"
 
 	"terrarium-core/internal/api"
 	"terrarium-core/internal/automation"
@@ -37,63 +36,43 @@ func main() {
 	defer db.Close()
 	repo := storage.NewRepository(db)
 
-	// 4. Инициализация Аппаратуры (GPIO) с переключением Mock/Real
-	isMock := true // По умолчанию безопасно используем моки
-	if mockEnv := strings.ToLower(os.Getenv("MOCK_HARDWARE")); mockEnv == "false" || mockEnv == "0" {
-		isMock = false
-	}
+	// 4. Инициализация Аппаратуры (GPIO) - ТОЛЬКО БЕЗ МОКОВ
+	log.Println("[СТАРТ] Инициализация БОЕВОГО оборудования Raspberry Pi 5 (libgpiod)...")
 
 	var warmSensor, coldSensor gpio.SensorReader
 	var relays map[string]gpio.RelayController
+	// В будущем брать пины из .env GPIO_MAPPING, пока хардкод для стабильности
+	warmSensor, err = gpio.NewRealDHT22("WarmZone", 4) // GPIO 4 (D4 / D5?)
+	if err != nil {
+		log.Printf("[ВНИМАНИЕ] Ошибка инициализации DHT22 (Warm): %v\n", err)
+		// Программа не должна падать, если датчик временно отвалился
+	}
 
-	if isMock {
-		log.Println("[СТАРТ] Инициализация программных ЗАГЛУШЕК (Mock) оборудования (ПК режим)...")
-		warmSensor = gpio.NewMockDHT22("WarmZone", 32.5, 60.0)
-		coldSensor = gpio.NewMockDHT22("ColdZone", 25.0, 70.0)
+	coldSensor, err = gpio.NewRealDHT22("ColdZone", 17) // GPIO 17
+	if err != nil {
+		log.Printf("[ВНИМАНИЕ] Ошибка инициализации DHT22 (Cold): %v\n", err)
+	}
 
-		relays = map[string]gpio.RelayController{
-			"heat_mat": gpio.NewMockRelay("heat_mat"),
-			"fogger":   gpio.NewMockRelay("fogger"),
-			"light":    gpio.NewMockRelay("light"),
-			"spare":    gpio.NewMockRelay("spare"),
-		}
-	} else {
-		log.Println("[СТАРТ] Инициализация БОЕВОГО оборудования Raspberry Pi 5 (libgpiod)...")
-		// Для реального запуска парсим номера пинов из GPIO_MAPPING (json) в .env
-		// В данном примере хардкодим пины для простоты, но в бою берем из Config/Env
+	relays = make(map[string]gpio.RelayController)
 
-		var err error
-		warmSensor, err = gpio.NewRealDHT22("WarmZone", 4) // GPIO 4
-		if err != nil {
-			log.Fatalf("Ошибка DHT22 (Warm): %v", err)
-		}
+	relays["heat_mat"], err = gpio.NewRealRelay("heat_mat", 22) // Оранжевый
+	if err != nil {
+		log.Fatalf("Ошибка Реле heat_mat: %v", err)
+	}
 
-		coldSensor, err = gpio.NewRealDHT22("ColdZone", 17) // GPIO 17
-		if err != nil {
-			log.Fatalf("Ошибка DHT22 (Cold): %v", err)
-		}
+	relays["fogger"], err = gpio.NewRealRelay("fogger", 27) // Серый (из питона BCM 27)
+	if err != nil {
+		log.Fatalf("Ошибка Реле fogger: %v", err)
+	}
 
-		relays = make(map[string]gpio.RelayController)
+	relays["light"], err = gpio.NewRealRelay("light", 17) // Белый (из питона BCM 17)
+	if err != nil {
+		log.Fatalf("Ошибка Реле light: %v", err)
+	}
 
-		relays["heat_mat"], err = gpio.NewRealRelay("heat_mat", 22)
-		if err != nil {
-			log.Fatalf("Ошибка Реле: %v", err)
-		}
-
-		relays["fogger"], err = gpio.NewRealRelay("fogger", 23)
-		if err != nil {
-			log.Fatalf("Ошибка Реле: %v", err)
-		}
-
-		relays["light"], err = gpio.NewRealRelay("light", 24)
-		if err != nil {
-			log.Fatalf("Ошибка Реле: %v", err)
-		}
-
-		relays["spare"], err = gpio.NewRealRelay("spare", 25)
-		if err != nil {
-			log.Fatalf("Ошибка Реле: %v", err)
-		}
+	relays["spare"], err = gpio.NewRealRelay("spare", 23) // Фиолетовый (BCM 23)
+	if err != nil {
+		log.Fatalf("Ошибка Реле spare: %v", err)
 	}
 
 	// 5. Запуск фонового движка автоматизации (Конечного Автомата)
