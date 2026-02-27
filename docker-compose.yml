@@ -43,6 +43,7 @@ services:
       - GPIO_MAPPING=${GPIO_MAPPING}
       - WATTAGE_MAPPING=${WATTAGE_MAPPING}
       - PORT=${PORT:-8080}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
     volumes:
       - ./data/state:/app/state # Быстрый доступ к JSON фолбеку состояния
     depends_on:

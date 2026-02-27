@@ -24,9 +24,9 @@ func NewRealRelay(name string, pinNumber int) (*RealRelay, error) {
 
 	pin := rpio.Pin(pinNumber)
 	pin.Output()
-	pin.Low() // Безопасный старт - выключаем реле
+	pin.High() // Защита для инвертированных реле: HIGH отключает цепь (Нормально Разомкнуто)
 
-	log.Printf("[GPIO INIT] Аппаратное Реле '%s' инициализировано на пине BCM %d (LOW)\n", name, pinNumber)
+	log.Printf("[GPIO INIT] Аппаратное Реле '%s' инициализировано на пине BCM %d (HIGH/OFF)\n", name, pinNumber)
 
 	return &RealRelay{
 		name:  name,
@@ -39,18 +39,18 @@ func (r *RealRelay) Name() string { return r.name }
 
 func (r *RealRelay) On() error {
 	if !r.state {
-		r.pin.High()
+		r.pin.Low() // LOW включает инвертированное реле (замыкает цепь)
 		r.state = true
-		log.Printf("[GPIO EVENT] Реле '%s' -> ВКЛЮЧЕНО (HIGH)\n", r.name)
+		log.Printf("[GPIO EVENT] Реле '%s' -> ВКЛЮЧЕНО (LOW)\n", r.name)
 	}
 	return nil
 }
 
 func (r *RealRelay) Off() error {
 	if r.state {
-		r.pin.Low()
+		r.pin.High() // HIGH выключает инвертированное реле (размыкает цепь)
 		r.state = false
-		log.Printf("[GPIO EVENT] Реле '%s' -> ВЫКЛЮЧЕНО (LOW)\n", r.name)
+		log.Printf("[GPIO EVENT] Реле '%s' -> ВЫКЛЮЧЕНО (HIGH)\n", r.name)
 	}
 	return nil
 }
